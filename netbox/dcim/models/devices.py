@@ -786,9 +786,8 @@ class Device(
             return f'{self.device_type.manufacturer} {self.device_type.model} ({self.pk})'
         return super().__str__()
 
-    def clean(self):
-        super().clean()
-
+    def _validate_rack_position(self):
+        """Extração da lógica de validação de Racks e Posições (Refatoração SRP)"""
         # Validate site/location/rack combination
         if self.rack and self.site != self.rack.site:
             raise ValidationError({
@@ -818,7 +817,8 @@ class Device(
                 })
 
         # Validate rack position and face
-        if self.position and self.position % decimal.Decimal(0.5):
+        RACK_UNIT_INCREMENT = decimal.Decimal(0.5) #Constante adicionada para facilitar a manutenção do código, caso seja necessário alterar o incremento de unidades de rack no futuro.
+        if self.position and self.position % RACK_UNIT_INCREMENT:
             raise ValidationError({
                 'position': _("Position must be in increments of 0.5 rack units.")
             })
@@ -828,8 +828,7 @@ class Device(
             })
 
         # Prevent 0U devices from being assigned to a specific position
-        if hasattr(self, 'device_type'):
-            if self.position and self.device_type.u_height == 0:
+        if hasattr(self, 'device_type') and self.position and self.device_type.u_height == 0: #removed Deep Nesting
                 raise ValidationError({
                     'position': _(
                         "A 0U device type ({device_type}) cannot be assigned to a rack position."
@@ -837,7 +836,6 @@ class Device(
                 })
 
         if self.rack:
-
             try:
                 # Child devices cannot be assigned to a rack face/unit
                 if self.device_type.is_child_device and self.face:
@@ -874,6 +872,8 @@ class Device(
             except DeviceType.DoesNotExist:
                 pass
 
+    def _validated_ip_addresses(self):
+        """Extração da lógica de validação de IPs (Refatoração SRP)"""
         # Validate primary & OOB IP addresses
         vc_interfaces = self.vc_interfaces(if_master=False)
         if self.primary_ip4:
@@ -921,6 +921,13 @@ class Device(
                 raise ValidationError({
                     'oob_ip': f"The specified IP address ({self.oob_ip}) is not assigned to this device."
                 })
+
+    def clean(self):
+        super().clean()
+
+        # Chamada dos métodos extraídos
+        self._validate_rack_position()
+        self._validated_ip_addresses()
 
         # Validate manufacturer/platform
         if hasattr(self, 'device_type') and self.platform:
