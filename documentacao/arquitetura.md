@@ -1,39 +1,65 @@
-# Arquitetura do Sistema: NetBox (Padrão MTV)
+# Arquitetura e Modelagem do Sistema: NetBox
 
-O NetBox é desenvolvido utilizando o framework web Django (Python). A arquitetura base do Django segue o padrão **MTV (Model-Template-View)**, que é uma variação arquitetural diretamente equivalente ao clássico **MVC (Model-View-Controller)**. 
+## Descrição da Arquitetura (Padrão MTV / MVC)
 
-Para este projeto, é fundamental compreender como essas camadas interagem, especialmente no contexto da renderização dinâmica de tabelas, que é o alvo principal da nossa contribuição (Caminho A).
+O NetBox é desenvolvido sobre o framework web Django (Python), adotando a arquitetura **MTV (Model-Template-View)**. O padrão MTV é a nomenclatura idiomática do Django para a arquitetura **MVC (Model-View-Controller)**, estruturada da seguinte forma:
 
-## Mapeamento da Arquitetura (MTV vs MVC)
+* **Model (Camada de Dados):** Classes em Python (`models.py`) que representam o esquema do banco de dados relacional utilizando ORM (Object-Relational Mapping). O sistema é altamente modularizado em grandes pacotes (ex: `DCIM` para infraestrutura física e `IPAM` para redes).
+* **View (Controlador / Lógica de Negócio):** Atua como o "Controller" do MVC. Processa requisições HTTP, aplica filtros dinâmicos de dados (como anotações em QuerySets baseadas nas colunas ativas) e orquestra a comunicação entre os Models e os Templates.
+* **Template (Camada de Apresentação):** Páginas HTML renderizadas no lado do servidor. O NetBox utiliza fortemente o pacote `django-tables2` para a geração e controle dinâmico de exibição de tabelas no *frontend*.
 
-1. **Model (Modelo):** É a camada de acesso e estruturação de dados. Representa as tabelas do banco de dados (PostgreSQL). No contexto da nossa issue, interagimos com os modelos `DeviceType` e `ModuleType`, que armazenam os metadados dos equipamentos físicos e seus respectivos anexos (imagens).
-2. **View (Visão - O equivalente ao *Controller* no MVC):** Contém a lógica de negócio e o controle de fluxo. As *Views* do NetBox recebem as requisições HTTP, processam os filtros do usuário e constroem as consultas ao banco de dados (QuerySets). É aqui que ocorre a otimização exigida pelos mantenedores: a *View* intercepta as colunas selecionadas pelo usuário na interface e injeta anotações dinâmicas (`.annotate()`) no banco de dados **apenas** para as colunas visíveis, evitando degradação de performance.
-3. **Template (Gabarito - O equivalente à *View* no MVC):** É a camada de apresentação. O NetBox utiliza a biblioteca `django-tables2` para renderizar o HTML a partir dos dados fornecidos pela *View*. As novas colunas (ex: `Front Image (Y/N)`) são definidas nesta camada, aguardando os dados processados dinamicamente.
+## Justificativa
 
-## Diagrama de Fluxo de Dados (Mermaid)
+A escolha da arquitetura MTV do Django e da sua estrutura baseada em pacotes modulares (Apps) é a mais adequada para o NetBox devido à complexidade e alta densidade de relacionamentos presentes em um sistema de gerenciamento de data centers (DCIM) e gerenciamento de endereços IP (IPAM).
 
-O diagrama abaixo ilustra o ciclo de vida de uma requisição no NetBox, focando na otimização dinâmica das tabelas que será implementada nesta manutenção evolutiva.
+A separação estrita dessas camadas promove **alta coesão e baixo acoplamento**. Isso permite que o sistema escale de forma segura, garantindo que alterações na lógica de negócio e validações de equipamentos não quebrem a interface visual. Além disso, essa estrutura em componentes facilita a exposição imediata do banco de dados relacional (PostgreSQL) por meio de APIs (REST e GraphQL), um requisito fundamental, já que o NetBox opera como "Fonte da Verdade" (Source of Truth) para scripts de automação de rede e infraestrutura via código.
+
+## Diagrama de Pacotes e Componentes
+
+O diagrama abaixo ilustra a macroarquitetura de componentes do NetBox, demonstrando como os principais pacotes (`Core`, `DCIM`, `IPAM`) interagem com a camada de visualização e com a infraestrutura de persistência de dados.
 
 ```mermaid
-flowchart TD
-    A[Usuário/Browser] -->|Requisição HTTP GET\n(com colunas visíveis selecionadas)| B(URL Router)
-    B --> C{View \n Lógica de Negócio}
-    C -->|Identifica colunas ativas| D[Construção do QuerySet Dinâmico]
-    
-    subgraph Camada de Dados (Model)
-        D -->|Se a coluna 'Images' estiver visível| E[(Database PostgreSQL\nQuery com JOIN/Annotate)]
-        D -->|Se a coluna 'Images' estiver oculta| F[(Database PostgreSQL\nQuery Simples)]
+flowchart TB
+    subgraph Frontend["Camada de Apresentação (Frontend)"]
+        UI[Interface de Usuário\nHTML / django-tables2]
+        EXT[Sistemas de Automação\nScripts Python/Ansible]
     end
+
+    subgraph Core["NetBox Core (Arquitetura MTV)"]
+        subgraph Controllers["Controladores (Views)"]
+            WEB_VIEW[Web Views\nFiltros e Lógica]
+            API_VIEW[API REST / GraphQL\nDRF / Graphene]
+        end
+
+        subgraph Apps["Componentes e Pacotes de Negócio (Models)"]
+            subgraph DCIM["Módulo DCIM (Data Center)"]
+                MOD_DEV[Devices & Components]
+                MOD_SITE[Sites & Racks]
+            end
+            
+            subgraph IPAM["Módulo IPAM (Redes)"]
+                MOD_IP[IP Addresses]
+                MOD_VLAN[VLANs & VRFs]
+            end
+        end
+    end
+
+    subgraph Infra["Infraestrutura de Dados"]
+        DB[(Banco de Dados\nPostgreSQL)]
+        CACHE[(Cache\nRedis)]
+    end
+
+    %% Relacionamentos e Fluxos
+    UI <--> WEB_VIEW
+    EXT <--> API_VIEW
+
+    WEB_VIEW --> DCIM
+    WEB_VIEW --> IPAM
+    API_VIEW --> DCIM
+    API_VIEW --> IPAM
+
+    DCIM --> DB
+    IPAM --> DB
     
-    E --> G[Retorno dos Dados Otimizados]
-    F --> G
-    
-    G --> H{Template \n django-tables2}
-    H -->|Renderiza Tabela HTML| A
-
-```
-
-Justificativa Arquitetural
-A escolha desse padrão estrutural pelo NetBox justifica-se pela necessidade de gerenciar uma infraestrutura de dados extremamente relacional e densa (DCIM/IPAM). A separação clara entre a definição do dado (Model) e a lógica de exibição dinâmica (Template/django-tables2) permite que o sistema escale sem onerar o banco de dados.
-
-Ao aplicar a regra de anotação condicional na View — exigência fundamental do mantenedor da nossa issue —, respeitamos o princípio de que o banco de dados só deve processar contagens de relações (como verificar imagens anexadas a centenas de dispositivos) quando o usuário explicitamente necessitar dessa informação na camada de visualização.
+    WEB_VIEW -. "Query caching" .-> CACHE
+    API_VIEW -. "Query caching" .-> CACHE
