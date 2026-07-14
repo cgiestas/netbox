@@ -1,0 +1,48 @@
+name: Cypress E2E Tests
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  cypress-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      # 1. Clona o repositório de docker oficial do NetBox
+      - name: Baixar configurações do NetBox Docker
+        run: |
+          git clone -b release https://github.com/netbox-community/netbox-docker.git
+          cp netbox-docker/docker-compose.yml .
+          cp netbox-docker/docker-compose.override.yml.example docker-compose.override.yml
+          mkdir -p configuration
+
+      # 2. Sobe o ambiente configurando o superusuário via variáveis de ambiente
+      - name: Subir ambiente NetBox
+        env:
+          # Estas variáveis dizem para o docker inicializar um admin padrão de teste
+          SUPERUSER_NAME: admin
+          SUPERUSER_PASSWORD: admin
+          SUPERUSER_EMAIL: admin@example.com
+        run: |
+          docker compose pull
+          docker compose up -d
+
+      # 3. Aguarda o backend responder na porta 8000 antes de iniciar os testes
+      - name: Aguardar NetBox iniciar
+        run: |
+          echo "Aguardando o NetBox..."
+          # Faz requisições até o endpoint de login retornar sucesso (HTTP 200)
+          until curl -s -f http://localhost:8000/login/ > /dev/null; do
+            sleep 5
+          done
+          echo "NetBox online e pronto!"
+
+      # 4. Roda o Cypress apontando diretamente para a subpasta correta
+      - name: Rodar testes Cypress
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: netbox/project-static
+          install-command: npm install --legacy-peer-deps 
+          wait-on: 'http://localhost:8000'
