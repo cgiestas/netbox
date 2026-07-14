@@ -1,48 +1,125 @@
-name: Cypress E2E Tests
-on: [push, pull_request]
+name: NetBox E2E Tests (Cypress)
+
+on:
+  pull_request:
+    branches: [ main ]
+
 permissions:
   contents: read
 
 jobs:
   cypress-run:
     runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: netbox
+          POSTGRES_PASSWORD: netbox
+          POSTGRES_DB: netbox
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
-      - name: Checkout do código
+      - name: Check out repo
         uses: actions/checkout@v4
 
-      # 1. Clona o repositório de docker oficial do NetBox
-      - name: Baixar configurações do NetBox Docker
-        run: |
-          git clone -b release https://github.com/netbox-community/netbox-docker.git
-          cp netbox-docker/docker-compose.yml .
-          cp netbox-docker/docker-compose.override.yml.example docker-compose.override.yml
-          mkdir -p configuration
+      # Setting up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      # 2. Sobe o ambiente configurando o superusuário via variáveis de ambiente
-      - name: Subir ambiente NetBox
+      # Installing dependencies
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Tests set up, based on cy.yml implementation
+      - name: Configure local testing settings
+        run: |
+          cp netbox/netbox/configuration_example.py netbox/netbox/configuration.py
+          
+          sed -i "s/ALLOWED_HOSTS = \[\]/ALLOWED_HOSTS = \['*'\]/" netbox/netbox/configuration.py
+          sed -i "s/SECRET_KEY = ''/SECRET_KEY = 'cypress-test-secret-key-super-secure-and-abnormally-long-so-django-stops-complaining'/" netbox/netbox/configuration.py
+          
+          cat <<EOF >> netbox/netbox/configuration.py
+          DATABASES = {
+              'default': {
+                  'ENGINE': 'django.db.backends.postgresql',
+                  'NAME': 'netbox',
+                  'USER': 'netbox',
+                  'PASSWORD': 'netbox',
+                  'HOST': 'localhost',
+                  'PORT': '5432',
+              }
+          }
+          REDIS = {
+              'tasks': {
+                  'HOST': 'localhost',
+                  'PORT': 6379,
+                  'DATABASE': 0,
+              },
+              'caching': {
+                  'HOST': 'localhost',
+                  'PORT': 6379,
+                  'DATABASE': 1,
+              }
+          }
+          EOF
+
+      # Preparing database (runs migrations to create the tables)
+      - name: Run Database Migrations
+        run: python netbox/manage.py migrate --no-input
+
+      - name: Create NetBox Superuser for Testing
         env:
-          # Estas variáveis dizem para o docker inicializar um admin padrão de teste
-          SUPERUSER_NAME: admin
-          SUPERUSER_PASSWORD: admin
-          SUPERUSER_EMAIL: admin@example.com
+          DJANGO_SUPERUSER_USERNAME: 'admin'
+          DJANGO_SUPERUSER_PASSWORD: 'admin'
+          DJANGO_SUPERUSER_EMAIL: 'admin@example.com'
         run: |
-          docker compose pull
-          docker compose up -d
+          python netbox/manage.py createsuperuser --no-input
 
-      # 3. Aguarda o backend responder na porta 8000 antes de iniciar os testes
-      - name: Aguardar NetBox iniciar
+      # Colects static files (CSS, JS) to render the interface correctly
+      - name: Collect static files
+        run: python netbox/manage.py collectstatic --no-input
+
+      # Initializing Netbox server on the background, on port 8000
+      - name: Start NetBox server
         run: |
-          echo "Aguardando o NetBox..."
-          # Faz requisições até o endpoint de login retornar sucesso (HTTP 200)
-          until curl -s -f http://localhost:8000/login/ > /dev/null; do
-            sleep 5
-          done
-          echo "NetBox online e pronto!"
+          python netbox/manage.py runserver 0.0.0.0:8000 &
 
-      # 4. Roda o Cypress apontando diretamente para a subpasta correta
-      - name: Rodar testes Cypress
+      # Configures Node.js for Cypress
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      
+      - name: Install Frontend Dependencies & Cypress
+        run: |
+          cd netbox/project-static
+          npm install --legacy-peer-deps
+
+      
+      - name: Run Cypress tests
         uses: cypress-io/github-action@v6
         with:
           working-directory: netbox/project-static
-          install-command: npm install --legacy-peer-deps 
+          install: false
           wait-on: 'http://localhost:8000'
+          wait-on-timeout: 60
+        env:
+          CYPRESS_NETBOX_USERNAME: 'admin'
+          CYPRESS_NETBOX_PASSWORD: 'admin'
