@@ -2,12 +2,12 @@ describe('NetBox - Device Type Image Columns', () => {
 
   beforeEach(() => {
     // 1. Visit your local NetBox instance 
-    cy.visit('http://localhost:8000')
+    cy.visit('http://localhost:8000', { timeout: 15000 })
 
     const username = Cypress.env('NETBOX_USERNAME') || 'admin'
     const password = Cypress.env('NETBOX_PASSWORD') || 'admin'
     // 2. Log in
-    cy.get('#id_username').type(username)
+    cy.get('#id_username', { timeout: 10000 }).type(username)
     cy.get('#id_password').type(`${password}{enter}`)
     
   })
