@@ -80,6 +80,9 @@ jobs:
                   'DATABASE': 1,
               }
           }
+          DEBUG_TOOLBAR_CONFIG = {
+            'SHOW_TOOLBAR_CALLBACK': lambda request: False,
+          }
           EOF
 
       # Preparing database (runs migrations to create the tables)
