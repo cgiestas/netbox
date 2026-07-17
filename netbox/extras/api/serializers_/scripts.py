@@ -1,7 +1,7 @@
 import logging
 
 from django.core.files.storage import storages
-from django.db import IntegrityError
+from django.db import IntegrityError, router, transaction
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -37,6 +37,23 @@ class ScriptModuleSerializer(ValidatedModelSerializer):
         # Pop 'file' before model instantiation — ScriptModule has no such field.
         file = data.pop('file', None)
         data['file_root'] = ManagedFileRootPathChoices.SCRIPTS
+
+        if self.instance is None:
+            # Reject duplicates before writing to storage so a failed upload can't touch the existing file
+            if file is not None and ScriptModule.objects.filter(
+                file_root=ManagedFileRootPathChoices.SCRIPTS, file_path=file.name
+            ).exists():
+                raise serializers.ValidationError(_("A script module with this file name already exists."))
+        elif file is None:
+            # Replacing a module's content requires a file upload, even for a partial update
+            raise serializers.ValidationError({'file': _("This field is required.")})
+        elif file.name != self.instance.file_path:
+            raise serializers.ValidationError({
+                'file': _(
+                    "The uploaded file name must match the existing file path ({path})."
+                ).format(path=self.instance.file_path)
+            })
+
         data = super().validate(data)
         data.pop('file_root', None)
         if file is not None:
@@ -68,11 +85,44 @@ class ScriptModuleSerializer(ValidatedModelSerializer):
                 )
             raise
         finally:
-            if not created and (file_path := validated_data.get('file_path')):
+            # Don't delete a path another ScriptModule still references (e.g. a concurrent upload won the race)
+            file_path = validated_data.get('file_path')
+            if not created and file_path and not ScriptModule.objects.filter(
+                file_root=ManagedFileRootPathChoices.SCRIPTS, file_path=file_path
+            ).exists():
                 try:
                     storage.delete(file_path)
                 except Exception:
                     logger.warning(f"Failed to delete orphaned script file '{file_path}' from storage.")
+
+    def update(self, instance, validated_data):
+        file = validated_data.pop('file')
+        storage = storages.create_storage(storages.backends["scripts"])
+
+        # Overwrite the existing file in place, keeping file_path stable
+        file.seek(0)
+        saved_path = storage.save(instance.file_path, file)
+        if saved_path != instance.file_path:
+            # The backend saved under an alternate name instead of overwriting; drop the orphan and reject
+            try:
+                storage.delete(saved_path)
+            except Exception:
+                logger.warning(f"Failed to delete orphaned script file '{saved_path}' from storage.")
+            raise serializers.ValidationError({
+                'file': _(
+                    "The scripts storage backend did not overwrite the existing file. Ensure the "
+                    "backend is configured to allow overwrites."
+                )
+            })
+
+        # Discard any cached class discovery so save() re-syncs from the new content
+        instance.__dict__.pop('module_scripts', None)
+        instance.last_updated = local_now()
+        # Keep Script row sync all-or-nothing; the storage write above cannot join the transaction
+        with transaction.atomic(using=router.db_for_write(ScriptModule)):
+            instance.save()
+
+        return instance
 
 
 class ScriptSerializer(ValidatedModelSerializer):

@@ -1226,6 +1226,19 @@ console-ports:
 class ModuleTypeTestCase(ViewTestCases.PrimaryObjectViewTestCase):
     model = ModuleType
 
+    SCHEMA = {
+        'properties': {
+            'media': {
+                'title': 'Media',
+                'type': 'array',
+                'items': {
+                    'type': 'string',
+                    'enum': ['copper', 'sfp', 'qsfp28'],
+                },
+            },
+        },
+    }
+
     @classmethod
     def setUpTestData(cls):
 
@@ -1235,8 +1248,15 @@ class ModuleTypeTestCase(ViewTestCases.PrimaryObjectViewTestCase):
         )
         Manufacturer.objects.bulk_create(manufacturers)
 
+        profile = ModuleTypeProfile.objects.create(name='Module Type Profile 1', schema=cls.SCHEMA)
+
         module_types = ModuleType.objects.bulk_create([
-            ModuleType(model='Module Type 1', manufacturer=manufacturers[0]),
+            ModuleType(
+                model='Module Type 1',
+                manufacturer=manufacturers[0],
+                profile=profile,
+                attribute_data={'media': ['copper', 'qsfp28']},
+            ),
             ModuleType(model='Module Type 2', manufacturer=manufacturers[0]),
             ModuleType(model='Module Type 3', manufacturer=manufacturers[0]),
         ])
@@ -1283,6 +1303,22 @@ class ModuleTypeTestCase(ViewTestCases.PrimaryObjectViewTestCase):
         # run base test
         super().test_bulk_update_objects_with_permission()
 
+    def test_bulk_update_objects_without_change_permission(self):
+        # ModuleTypeImportView declares these as additional_permissions, so they're required to reach the view
+        self.add_permissions(
+            'dcim.add_consoleporttemplate',
+            'dcim.add_consoleserverporttemplate',
+            'dcim.add_powerporttemplate',
+            'dcim.add_poweroutlettemplate',
+            'dcim.add_interfacetemplate',
+            'dcim.add_frontporttemplate',
+            'dcim.add_rearporttemplate',
+            'dcim.add_modulebaytemplate',
+        )
+
+        # run base test
+        super().test_bulk_update_objects_without_change_permission()
+
     @tag('regression')
     def test_bulk_import_objects_with_permission(self):
         self.add_permissions(
@@ -1318,6 +1354,19 @@ class ModuleTypeTestCase(ViewTestCases.PrimaryObjectViewTestCase):
         )
 
         super().test_bulk_import_objects_with_constrained_permission()
+
+    @tag('regression')
+    def test_get_object_renders_profile_attribute_lists(self):
+        self.add_permissions(
+            'dcim.view_moduletype',
+            'dcim.view_moduletypeprofile',
+        )
+        moduletype = ModuleType.objects.first()
+        response = self.client.get(moduletype.get_absolute_url())
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, 'Media')
+        self.assertContains(response, 'copper, qsfp28')
 
     def test_moduletype_consoleports(self):
         self.add_permissions('dcim.view_moduletype', 'dcim.view_consoleporttemplate')
@@ -2558,14 +2607,33 @@ class ModuleTestCase(
     @classmethod
     def setUpTestData(cls):
         manufacturer = Manufacturer.objects.create(name='Generic', slug='generic')
-        module_type_profile = ModuleTypeProfile.objects.create(name='Module Type Profile 1')
+        module_type_profile = ModuleTypeProfile.objects.create(
+            name='Module Type Profile 1',
+            schema={
+                'properties': {
+                    'media': {
+                        'title': 'Media',
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'enum': ['copper', 'sfp', 'qsfp28'],
+                        },
+                    },
+                },
+            },
+        )
         devices = (
             create_test_device('Device 1'),
             create_test_device('Device 2'),
         )
 
         module_types = (
-            ModuleType(manufacturer=manufacturer, model='Module Type 1', profile=module_type_profile),
+            ModuleType(
+                manufacturer=manufacturer,
+                model='Module Type 1',
+                profile=module_type_profile,
+                attribute_data={'media': ['copper', 'qsfp28']},
+            ),
             ModuleType(manufacturer=manufacturer, model='Module Type 2'),
             ModuleType(manufacturer=manufacturer, model='Module Type 3'),
             ModuleType(manufacturer=manufacturer, model='Module Type 4'),
@@ -2633,6 +2701,19 @@ class ModuleTestCase(
         response = self.client.get(self._get_queryset().first().get_absolute_url())
 
         self.assertContains(response, 'Module Type Profile 1')
+
+    @tag('regression')
+    def test_module_detail_renders_module_type_attribute_lists(self):
+        self.add_permissions(
+            'dcim.view_module',
+            'dcim.view_moduletype',
+            'dcim.view_moduletypeprofile',
+        )
+        response = self.client.get(self._get_queryset().first().get_absolute_url())
+
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, 'Media')
+        self.assertContains(response, 'copper, qsfp28')
 
     def test_module_component_replication(self):
         self.add_permissions(
@@ -3985,6 +4066,110 @@ class CableTestCase(
             data['b_terminations'] = [obj.pk for obj in data['b_terminations']]
 
         return data
+
+
+#
+# Connections
+#
+
+class ConnectionsListViewTestCaseMixin:
+    """
+    Shared behavior for the read-only connection list views.
+
+    These views list components whose cable paths are complete, but their URL names
+    do not follow the <model>_list pattern assumed by ModelViewTestCase.
+    """
+    url_base = None
+
+    def _get_base_url(self):
+        return self.url_base
+
+    def _get_queryset(self):
+        return self.model.objects.filter(_path__is_complete=True)
+
+
+class ConsoleConnectionsListViewTestCase(
+    ConnectionsListViewTestCaseMixin,
+    ViewTestCases.ListObjectsViewTestCase
+):
+    model = ConsolePort
+    url_base = 'dcim:console_connections_{}'
+    query_count_model_label = 'consoleconnection'
+
+    @classmethod
+    def setUpTestData(cls):
+        device = create_test_device('Device 1')
+        peer_device = create_test_device('Device 2')
+
+        console_ports = ConsolePort.objects.bulk_create((
+            ConsolePort(device=device, name='Console Port 1'),
+            ConsolePort(device=device, name='Console Port 2'),
+            ConsolePort(device=device, name='Console Port 3'),
+        ))
+        console_server_ports = ConsoleServerPort.objects.bulk_create((
+            ConsoleServerPort(device=peer_device, name='Console Server Port 1'),
+            ConsoleServerPort(device=peer_device, name='Console Server Port 2'),
+            ConsoleServerPort(device=peer_device, name='Console Server Port 3'),
+        ))
+
+        for console_port, console_server_port in zip(console_ports, console_server_ports):
+            Cable(a_terminations=[console_port], b_terminations=[console_server_port]).save()
+
+
+class PowerConnectionsListViewTestCase(
+    ConnectionsListViewTestCaseMixin,
+    ViewTestCases.ListObjectsViewTestCase
+):
+    model = PowerPort
+    url_base = 'dcim:power_connections_{}'
+    query_count_model_label = 'powerconnection'
+
+    @classmethod
+    def setUpTestData(cls):
+        device = create_test_device('Device 1')
+        peer_device = create_test_device('Device 2')
+
+        power_ports = PowerPort.objects.bulk_create((
+            PowerPort(device=device, name='Power Port 1'),
+            PowerPort(device=device, name='Power Port 2'),
+            PowerPort(device=device, name='Power Port 3'),
+        ))
+        power_outlets = PowerOutlet.objects.bulk_create((
+            PowerOutlet(device=peer_device, name='Power Outlet 1'),
+            PowerOutlet(device=peer_device, name='Power Outlet 2'),
+            PowerOutlet(device=peer_device, name='Power Outlet 3'),
+        ))
+
+        for power_port, power_outlet in zip(power_ports, power_outlets):
+            Cable(a_terminations=[power_port], b_terminations=[power_outlet]).save()
+
+
+class InterfaceConnectionsListViewTestCase(
+    ConnectionsListViewTestCaseMixin,
+    ViewTestCases.ListObjectsViewTestCase
+):
+    model = Interface
+    url_base = 'dcim:interface_connections_{}'
+    query_count_model_label = 'interfaceconnection'
+
+    @classmethod
+    def setUpTestData(cls):
+        device = create_test_device('Device 1')
+        peer_device = create_test_device('Device 2')
+
+        interfaces = Interface.objects.bulk_create((
+            Interface(device=device, name='Interface 1', type=InterfaceTypeChoices.TYPE_1GE_FIXED),
+            Interface(device=device, name='Interface 2', type=InterfaceTypeChoices.TYPE_1GE_FIXED),
+            Interface(device=device, name='Interface 3', type=InterfaceTypeChoices.TYPE_1GE_FIXED),
+        ))
+        peer_interfaces = Interface.objects.bulk_create((
+            Interface(device=peer_device, name='Interface 1', type=InterfaceTypeChoices.TYPE_1GE_FIXED),
+            Interface(device=peer_device, name='Interface 2', type=InterfaceTypeChoices.TYPE_1GE_FIXED),
+            Interface(device=peer_device, name='Interface 3', type=InterfaceTypeChoices.TYPE_1GE_FIXED),
+        ))
+
+        for interface, peer_interface in zip(interfaces, peer_interfaces):
+            Cable(a_terminations=[interface], b_terminations=[peer_interface]).save()
 
 
 class VirtualChassisTestCase(ViewTestCases.PrimaryObjectViewTestCase):
