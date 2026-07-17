@@ -1,5 +1,77 @@
 # NetBox v4.6
 
+## v4.6.5 (2026-07-14)
+
+### Enhancements
+
+* [#18828](https://github.com/netbox-community/netbox/issues/18828) - Add MDC connector type for fiber ports and cables
+* [#22544](https://github.com/netbox-community/netbox/issues/22544) - Provide a REST API method to update or overwrite an existing custom script module
+* [#22629](https://github.com/netbox-community/netbox/issues/22629) - Enforce a lower maximum uploaded image size (50 megapixels) than the Pillow default
+* [#22649](https://github.com/netbox-community/netbox/issues/22649) - Add Korean language support
+
+### Performance Improvements
+
+* [#22551](https://github.com/netbox-community/netbox/issues/22551) - Add a prefetch hint to the GraphQL `tags` field to avoid N+1 queries on list endpoints
+* [#22589](https://github.com/netbox-community/netbox/issues/22589) - Cache serializers to avoid repeated reinstantiation on the cables list REST API endpoint
+
+### Bug Fixes
+
+* [#22154](https://github.com/netbox-community/netbox/issues/22154) - Correct the OpenAPI schema for relation counts on nested (brief) object representations
+* [#22500](https://github.com/netbox-community/netbox/issues/22500) - Return the configured maintenance mode message for REST API requests
+* [#22521](https://github.com/netbox-community/netbox/issues/22521) - Honor `RAM_BASE_UNIT` for the default memory of a virtual machine type
+* [#22539](https://github.com/netbox-community/netbox/issues/22539) - Restore the available IPs button for users with constrained permissions
+* [#22566](https://github.com/netbox-community/netbox/issues/22566) - Avoid name collisions when a custom script's filename matches a core app label
+* [#22568](https://github.com/netbox-community/netbox/issues/22568) - Fix uncaught `ValueError` (HTTP 500) when an invalid `filter_id` query parameter is provided
+* [#22573](https://github.com/netbox-community/netbox/issues/22573) - Remove persistent scrollbar on the navigation menu in Chrome
+* [#22578](https://github.com/netbox-community/netbox/issues/22578) - Ensure shared objects are treated consistently across the UI and REST API
+* [#22582](https://github.com/netbox-community/netbox/issues/22582) - Use a theme-aware color for interface list row separators in dark mode
+* [#22598](https://github.com/netbox-community/netbox/issues/22598) - Fix `ValueError` exception when viewing background tasks under RQ 2.10
+* [#22617](https://github.com/netbox-community/netbox/issues/22617) - Require the "change" permission (rather than "add") when editing objects via the bulk import form
+* [#22626](https://github.com/netbox-community/netbox/issues/22626) - Ensure custom link names are escaped when rendering fails
+* [#22632](https://github.com/netbox-community/netbox/issues/22632) - Fix `ValueError` raised by object-level permission checks for cross-app proxy models
+* [#22652](https://github.com/netbox-community/netbox/issues/22652) - Explicitly disable autoescaping for config templates rendered via `SandboxedEnvironment`
+* [#22657](https://github.com/netbox-community/netbox/issues/22657) - Escape the exception message in the `render_widget` template tag before marking it safe
+
+---
+
+## v4.6.4 (2026-06-30)
+
+### Enhancements
+
+* [#21710](https://github.com/netbox-community/netbox/issues/21710) - Render JSON schema `enum` options as a dropdown selection in module and device profile attribute forms
+* [#22174](https://github.com/netbox-community/netbox/issues/22174) - Include the `dns_name` of primary & out-of-band IP addresses in event payloads
+* [#22279](https://github.com/netbox-community/netbox/issues/22279) - Add a 1C8P:8C1P breakout cable profile
+* [#22548](https://github.com/netbox-community/netbox/issues/22548) - Improve the styling of action buttons in the navigation sidebar
+
+### Performance Improvements
+
+* [#22169](https://github.com/netbox-community/netbox/issues/22169) - Improve performance of the image attachments view when using S3 storage
+* [#22442](https://github.com/netbox-community/netbox/issues/22442) - Avoid repeated serializer instantiation in `GFKSerializerField`
+* [#22526](https://github.com/netbox-community/netbox/issues/22526) - Chunk bulk updates to custom field data to better handle a large number of records
+
+### Bug Fixes
+
+* [#21310](https://github.com/netbox-community/netbox/issues/21310) - Fix LDAP group lookup failure when a returned row contains a null value
+* [#22439](https://github.com/netbox-community/netbox/issues/22439) - Enforce object-level permissions on custom links rendered via the `custom_links` template tag
+* [#22440](https://github.com/netbox-community/netbox/issues/22440) - Remove errant `changelog` relation from GraphQL schema
+* [#22480](https://github.com/netbox-community/netbox/issues/22480) - Restore inline browser display of device front/rear images instead of forcing a download
+* [#22489](https://github.com/netbox-community/netbox/issues/22489) - Update the cached virtual chassis name on member devices in the search index when a virtual chassis is renamed
+* [#22501](https://github.com/netbox-community/netbox/issues/22501) - Return JSON rather than an HTML error page for GraphQL API exceptions
+* [#22507](https://github.com/netbox-community/netbox/issues/22507) - Also check `is_active` in the superuser bypass for `restrict()` and `IsSuperuser`
+* [#22543](https://github.com/netbox-community/netbox/issues/22543) - Prevent deletion of an existing custom script's file when re-uploading a same-named script via the REST API
+* [#22561](https://github.com/netbox-community/netbox/issues/22561) - Fix `AttributeError` when importing IP addresses with `is_primary`/`is_oob` set but no device assigned
+
+### Accessibility
+
+* [#22527](https://github.com/netbox-community/netbox/issues/22527) - Announce quick search results to screen readers
+* [#22528](https://github.com/netbox-community/netbox/issues/22528) - Make the Results/Filters tabs keyboard-operable
+* [#22529](https://github.com/netbox-community/netbox/issues/22529) - Allow the left sidebar accordion to be toggled with the spacebar
+* [#22530](https://github.com/netbox-community/netbox/issues/22530) - Remove hidden `<select>` inputs from the accessibility tree
+* [#22531](https://github.com/netbox-community/netbox/issues/22531) - Associate a label with the "Saved Filter" combobox for screen readers
+* [#22532](https://github.com/netbox-community/netbox/issues/22532) - Provide an accessible name for the empty checkbox column header cell in object tables
+
+---
+
 ## v4.6.3 (2026-06-16)
 
 ### Enhancements
@@ -29,7 +101,7 @@
 * [#22346](https://github.com/netbox-community/netbox/issues/22346) - Render SSO/SAML authentication failures as a login page message instead of an HTTP 500 error
 * [#22357](https://github.com/netbox-community/netbox/issues/22357) - Remove the unused `local_context_data` field from `dcim.Module` (which no longer inherits from `ConfigContextModel`)
 * [#22376](https://github.com/netbox-community/netbox/issues/22376) - Fix `AssertionError` in event rule script jobs when a device type has an image attached
-* [#22388](https://github.com/netbox-community/netbox/issues/22388) - Pin redis-py to <8.0 to avoid a startup failure on older Redis releases
+* [#22388](https://github.com/netbox-community/netbox/issues/22388) - Pin redis-py to 7.x to avoid a startup failure on older Redis releases
 * [#22397](https://github.com/netbox-community/netbox/issues/22397) - Fix `AttributeError` exception when an unauthenticated user attempts to export devices
 * [#22399](https://github.com/netbox-community/netbox/issues/22399) - Enforce object permissions on the related object when serving static media
 * [#22427](https://github.com/netbox-community/netbox/issues/22427) - Validate `JSONFilter.path` to prevent ORM operator injection over JSONField contents in the GraphQL API
