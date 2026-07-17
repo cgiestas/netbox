@@ -63,6 +63,10 @@ yarn-error.log*
 .DS_Store
 .idea/
 .vscode/
+.python-version 
+
+# Ignore Cypress and Node.js dependencies
+node_modules/
 .python-version
 
 # Python package build artifacts
