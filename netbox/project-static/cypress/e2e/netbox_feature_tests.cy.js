@@ -30,13 +30,13 @@ it('should allow a user to add Front Image, Rear Image, and Image Counter column
   cy.contains('button', 'Configure Table').click()
 
   cy.get('#id_available_columns').select('front_image')
-  cy.contains('button', 'Add').click()
+  cy.get('#add_columns').click()
 
   cy.get('#id_available_columns').select('rear_image')
-  cy.contains('button', 'Add').click()
+  cy.get('#add_columns').click()
 
   cy.get('#id_available_columns').select('image_count')
-  cy.contains('button', 'Add').click()
+  cy.get('#add_columns').click()
 
   cy.contains('button', 'Apply').click()
 
