@@ -84,6 +84,9 @@ jobs:
             'SHOW_TOOLBAR_CALLBACK': lambda request: False,
           }
           EOF
+        
+      - name: DEBUG - mostra configuration.py final
+        run: cat netbox/netbox/configuration.py
 
       # Preparing database (runs migrations to create the tables)
       - name: Run Database Migrations

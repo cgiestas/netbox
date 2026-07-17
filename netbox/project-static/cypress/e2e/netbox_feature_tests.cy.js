@@ -1,37 +1,42 @@
 describe('NetBox - Device Type Image Columns', () => {
 
   beforeEach(() => {
-    // 1. Visit your local NetBox instance 
+    //Visit your local NetBox instance 
     cy.visit('http://localhost:8000', { timeout: 15000 })
 
     const username = Cypress.env('NETBOX_USERNAME') || 'admin'
     const password = Cypress.env('NETBOX_PASSWORD') || 'admin'
-    // 2. Log in
+    //Log in
     cy.get('#id_username', { timeout: 10000 }).type(username)
     cy.get('#id_password').type(`${password}{enter}`)
-    
+    //esconde a debug toolbar, se existir
+    cy.get('body').then($body => {
+      if ($body.find('#djDebug').length) {
+        cy.get('#djDebug').invoke('css', 'display', 'none')
+      }
+    })
   })
 
-  it('should allow a user to add Front Image, Rear Image, and Image Counter columns', () => {
-    // 3. Navigate to the Device Types page
-    cy.visit('http://localhost:8000/dcim/device-types/')
+it('should allow a user to add Front Image, Rear Image, and Image Counter columns', () => {
+  cy.visit('http://localhost:8000/dcim/device-types/')
+  cy.contains('button', 'Configure Table').click()
 
-    // 4. Click the table configuration button to open the column picker
-    cy.contains('button', 'Configure Table').click()
+  // Seleciona cada coluna na lista "Available Columns" e clica em "Adicionar"
+  cy.get('#id_columns').select('front_image')
+  cy.contains('button', 'Adicionar').click()
 
-    // 5. Select the new optional columns from the list/select box
-    // (Depending on how NetBox renders its column picker, you might need to click checkboxes 
-    // or select options from a multiple select dropdown)
-    cy.get('#id_columns').select(['front_image', 'rear_image', 'images_count']) 
+  cy.get('#id_columns').select('rear_image')
+  cy.contains('button', 'Adicionar').click()
 
-    // 6. Save the table configuration
-    cy.get('button[type="submit"]').contains('Save').click()
+  cy.get('#id_columns').select('image_count')
+  cy.contains('button', 'Adicionar').click()
 
-    // 7. Check that the new column headers now exist in the table header (thead)
-    cy.get('table th').should('contain', 'Front Image')
-    cy.get('table th').should('contain', 'Rear Image')
-    cy.get('table th').should('contain', 'Images')
-  })
+  cy.contains('button', 'Aplicar').click()
+
+  cy.get('table th').should('contain', 'Front Image')
+  cy.get('table th').should('contain', 'Rear Image')
+  cy.get('table th').should('contain', 'Imagens')
+})
 
   it('should allow a user to create a new Site successfully', () => {
     cy.visit('http://localhost:8000/dcim/sites/add/')
