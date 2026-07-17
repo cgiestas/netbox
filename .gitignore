@@ -67,3 +67,9 @@ yarn-error.log*
 
 # Ignore Cypress and Node.js dependencies
 node_modules/
+.python-version
+
+# Python package build artifacts
+/dist/
+/build/
+*.egg-info/
