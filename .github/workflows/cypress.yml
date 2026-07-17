@@ -1,0 +1,162 @@
+name: NetBox E2E Tests (Cypress)
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  cypress-run:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: netbox
+          POSTGRES_PASSWORD: netbox
+          POSTGRES_DB: netbox
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # Setting up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Installing dependencies
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Tests set up, based on ci.yml implementation
+      - name: Configure local testing settings
+        run: |
+          cp netbox/netbox/configuration_example.py netbox/netbox/configuration.py
+
+          sed -i "s/ALLOWED_HOSTS = \[\]/ALLOWED_HOSTS = \['*'\]/" netbox/netbox/configuration.py
+          sed -i "s/SECRET_KEY = ''/SECRET_KEY = 'cypress-test-secret-key-super-secure-and-abnormally-long-so-django-stops-complaining'/" netbox/netbox/configuration.py
+          # DEBUG=False faz o runserver não servir estáticos e pode quebrar o
+          # bundle JS/CSS em CI (sem nginx na frente). Só pra ambiente de teste.
+          sed -i "s/DEBUG = False/DEBUG = True/" netbox/netbox/configuration.py
+
+          cat <<EOF >> netbox/netbox/configuration.py
+          DATABASES = {
+              'default': {
+                  'ENGINE': 'django.db.backends.postgresql',
+                  'NAME': 'netbox',
+                  'USER': 'netbox',
+                  'PASSWORD': 'netbox',
+                  'HOST': 'localhost',
+                  'PORT': '5432',
+              }
+          }
+          REDIS = {
+              'tasks': {
+                  'HOST': 'localhost',
+                  'PORT': 6379,
+                  'DATABASE': 0,
+              },
+              'caching': {
+                  'HOST': 'localhost',
+                  'PORT': 6379,
+                  'DATABASE': 1,
+              }
+          }
+          DEBUG_TOOLBAR_CONFIG = {
+            'SHOW_TOOLBAR_CALLBACK': lambda request: False,
+          }
+          EOF
+        
+      - name: DEBUG - mostra configuration.py final
+        run: cat netbox/netbox/configuration.py
+
+      # Preparing database (runs migrations to create the tables)
+      - name: Run Database Migrations
+        run: python netbox/manage.py migrate --no-input
+
+      - name: Create NetBox Superuser for Testing
+        env:
+          DJANGO_SUPERUSER_USERNAME: 'admin'
+          DJANGO_SUPERUSER_PASSWORD: 'admin'
+          DJANGO_SUPERUSER_EMAIL: 'admin@example.com'
+        run: |
+          python netbox/manage.py createsuperuser --no-input
+
+      # Colects static files (CSS, JS) to render the interface correctly
+      - name: Collect static files
+        run: python netbox/manage.py collectstatic --no-input
+
+      # Initializing Netbox server on the background, on port 8000
+      - name: Start NetBox server
+        run: |
+          python netbox/manage.py runserver 0.0.0.0:8000 > django.log 2>&1 &
+
+      - name: Verify Django is up
+        run: |
+          sleep 5
+          echo "=== DJANGO LOGS (startup) ==="
+          cat django.log
+          echo "======================"
+
+      # Configures Node.js for Cypress
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install Frontend Dependencies & Cypress
+        run: |
+          cd netbox/project-static
+          npm install --legacy-peer-deps
+
+      - name: Run Cypress tests
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: netbox/project-static
+          install: false
+          wait-on: 'http://localhost:8000'
+          wait-on-timeout: 60
+        env:
+          CYPRESS_NETBOX_USERNAME: 'admin'
+          CYPRESS_NETBOX_PASSWORD: 'admin'
+
+      # Roda mesmo se o passo anterior falhar (por padrão o Actions pula
+      # steps seguintes após uma falha, a não ser que a gente force com always()).
+      - name: Show Django log after test run
+        if: always()
+        run: |
+          echo "=== DJANGO LOGS (after Cypress run) ==="
+          cat django.log
+
+      - name: Upload Cypress screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: netbox/project-static/cypress/screenshots
+
+      - name: Upload Cypress videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: netbox/project-static/cypress/videos
+          if-no-files-found: ignore
