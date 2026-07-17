@@ -23,27 +23,27 @@ describe('NetBox - Device Type Image Columns', () => {
     cy.loginAsAdmin()
   })
 
-  it('should allow a user to add Front Image, Rear Image, and Image Counter columns', () => {
-    cy.visit('http://localhost:8000/dcim/device-types/')
-    cy.hideDebugToolbar()
+it('should allow a user to add Front Image, Rear Image, and Image Counter columns', () => {
+  cy.visit('http://localhost:8000/dcim/device-types/')
+  cy.hideDebugToolbar()
 
-    cy.contains('button', 'Configure Table').click()
+  cy.contains('button', 'Configure Table').click()
 
-    cy.get('#id_columns').select('front_image')
-    cy.contains('button', 'Adicionar').click()
+  cy.get('#id_available_columns').select('front_image')
+  cy.contains('button', 'Add').click()
 
-    cy.get('#id_columns').select('rear_image')
-    cy.contains('button', 'Adicionar').click()
+  cy.get('#id_available_columns').select('rear_image')
+  cy.contains('button', 'Add').click()
 
-    cy.get('#id_columns').select('image_count')
-    cy.contains('button', 'Adicionar').click()
+  cy.get('#id_available_columns').select('image_count')
+  cy.contains('button', 'Add').click()
 
-    cy.contains('button', 'Aplicar').click()
+  cy.contains('button', 'Apply').click()
 
-    cy.get('table th').should('contain', 'Front Image')
-    cy.get('table th').should('contain', 'Rear Image')
-    cy.get('table th').should('contain', 'Imagens')
-  })
+  cy.get('table th').should('contain', 'Front Image')
+  cy.get('table th').should('contain', 'Rear Image')
+  cy.get('table th').should('contain', 'Images')
+})
 
   it('should allow a user to create a new Site successfully', () => {
     cy.visit('http://localhost:8000/dcim/sites/add/')
